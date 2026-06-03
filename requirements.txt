@@ -1,0 +1,10 @@
+numpy
+pandas
+pandas-datareader
+requests
+matplotlib
+plotly
+yfinance
+statsmodels
+notebook
+jupyter
