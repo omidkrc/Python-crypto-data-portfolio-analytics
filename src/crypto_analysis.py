@@ -1,307 +1,269 @@
-# Cryptocurrency data analysis project
-# Extracted from the original Jupyter notebook.
+"""Market data and portfolio analytics course project.
 
-# %% Cell 0
-## installing packages
+This script is a cleaned, portable version of the original notebook. It keeps
+the original analytical scope while making data downloads, normalization,
+portfolio construction, and output handling more robust.
+"""
 
-#pip install alphavantage
-#pip install matplotlib.pyplot
-#pip install pandas
-#pip install numpy
-#pip install datetime
-#pip install requests
-#pip install math
-#pip install yahoo-finance
-#pip install pandas_datareader
-#pip install plotly
-#pip install statsmodels
-#pip install yfinance
+from itertools import product
+from pathlib import Path
 
-# %% Cell 1
-## importing packages
-
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas_datareader
-from pandas_datareader import data as wb
-from pandas_datareader import yahoo
 import pandas as pd
-import requests
-from datetime import datetime
-import math
-import plotly
 import plotly.graph_objects as go
 import yfinance as yf
-import matplotlib.pyplot as plt
 
-# %% Cell 2
-## Question 1, part a
 
-# %% Cell 3
-# Define tickers
-tickers = ['BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD']
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = ROOT / "outputs"
+FIGURE_DIR = ROOT / "figures"
+OUTPUT_DIR.mkdir(exist_ok=True)
+FIGURE_DIR.mkdir(exist_ok=True)
 
-# download data
-data1 = pd.DataFrame()
+ANNUALIZATION_DAYS = 365
+RISK_FREE_RATE = 0.0
 
-for t in tickers:
-    data1[t] = yf.download(t, start="2022-01-01", end="2022-12-31")['Close']
 
-# renaming the data frame columns, showing the data frame
-data1 = data1.rename(columns={ 'BTC-USD': 'Bitcoin', 'ETH-USD': 'Ethereum', 'BNB-USD': 'Binance coin', 'XRP-USD': 'Ripple', 'ADA-USD': 'Cardano'})
-data1
+def download_prices(tickers, start, end, adjusted=False):
+    """Download close or adjusted-close prices as a DataFrame."""
+    raw = yf.download(
+        tickers,
+        start=start,
+        end=end,
+        auto_adjust=False,
+        progress=False,
+        group_by="column",
+    )
 
-# %% Cell 4
-# calculating mean and standard deviation of price data of cryptos
+    if raw.empty:
+        raise RuntimeError(f"No price data returned for {tickers}.")
 
-data1_mean = data1.mean()
-data1_std = data1.std()
+    field = "Adj Close" if adjusted else "Close"
 
-# %% Cell 5
-# scaling the price data of cryptos, showing the price trend for which based on a scaled diagram that each one starts form price=100
+    if isinstance(raw.columns, pd.MultiIndex):
+        available = raw.columns.get_level_values(0)
+        if field not in available:
+            field = "Close"
+        prices = raw[field].copy()
+    else:
+        if field in raw.columns:
+            prices = raw[[field]].copy()
+        elif "Close" in raw.columns:
+            prices = raw[["Close"]].copy()
+        else:
+            raise RuntimeError("Downloaded data do not contain a close-price field.")
 
-data1_scaled = (data1 - data1_mean) / data1_std
-(data1_scaled / data1_scaled.iloc[0] * 100).plot(figsize = (15, 6));
-plt.show()
+    if isinstance(prices, pd.Series):
+        prices = prices.to_frame()
 
-# %% Cell 6
-# calculating the cumulative return for each crypto
+    if isinstance(tickers, str):
+        prices.columns = [tickers]
 
-data1_returns = (data1 / data1.shift(1)) - 1
-cumulative_return = (1 + data1_returns).product() - 1
-cumulative_return
+    return prices.sort_index()
 
-# %% Cell 7
-## Question 1, part b
 
-# %% Cell 8
-# Define the tickers
-tickers = ['BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'DOGE-USD', 'SOL-USD', 'MATIC-USD', 'TRX-USD', 'LTC-USD']
+def normalize_to_100(prices):
+    """Normalize each price series to 100 at its first valid observation."""
+    return prices.apply(lambda s: s / s.dropna().iloc[0] * 100)
 
-# download data for the last year
-data2 = pd.DataFrame()
 
-for t in tickers:
-    data2[t] = yf.download(t, start="2022-12-26", end="2023-06-26")['Close']
+def portfolio_grid(prices):
+    """Evaluate long-only portfolio weights in five-percentage-point steps."""
+    log_returns = np.log(prices / prices.shift(1)).dropna()
+    annual_returns = log_returns.mean() * ANNUALIZATION_DAYS
+    annual_cov = log_returns.cov() * ANNUALIZATION_DAYS
 
-# renaming the data frame columns, showing the data frame
-data2 = data2.rename(columns={ 'BTC-USD': 'Bitcoin', 'ETH-USD': 'Ethereum', 'BNB-USD': 'Binance coin', 'XRP-USD': 'Ripple', 'ADA-USD': 'Cardano',
- 'DOGE-USD': 'Dogecoin', 'SOL-USD': 'Solana', 'MATIC-USD': 'Polygon', 'TRX-USD': 'Tronix', 'LTC-USD': 'Litecoin'})
+    rows = []
+    weights = np.arange(0.0, 1.0001, 0.05)
 
-data2
+    for w_btc, w_eth, w_xrp in product(weights, repeat=3):
+        if not np.isclose(w_btc + w_eth + w_xrp, 1.0):
+            continue
 
-# %% Cell 9
-# calculating the daily returns for cryptos
-data2_returns = (data2 / data2.shift(1)) - 1
-data2_returns
+        w = np.array([w_btc, w_eth, w_xrp], dtype=float)
+        port_return = float(np.dot(annual_returns.values, w))
+        port_var = float(w.T @ annual_cov.values @ w)
+        port_vol = float(np.sqrt(max(port_var, 0.0)))
+        sharpe = np.nan if port_vol == 0 else (port_return - RISK_FREE_RATE) / port_vol
 
-# define the tickers
-tickers2 = ['Bitcoin', 'Ethereum', 'Binance coin', 'Ripple', 'Cardano', 'Dogecoin', 'Solana', 'Polygon', 'Tronix', 'Litecoin']
+        rows.append(
+            {
+                "bitcoin_weight": w_btc,
+                "ethereum_weight": w_eth,
+                "ripple_weight": w_xrp,
+                "annualized_return": port_return,
+                "annualized_volatility": port_vol,
+                "sharpe_ratio": sharpe,
+            }
+        )
 
-# calculating number of days with positive and negative returns for each cryptocurrency, printing the results
-for crypto in tickers2:
-    positive_days = (data2_returns[crypto] > 0).sum()
-    negative_days = (data2_returns[crypto] < 0).sum()
-    print(f'{crypto} has positive daily return for {positive_days} days and negative daily return for {negative_days} days')
+    return pd.DataFrame(rows)
 
-# %% Cell 10
-# calculating cumulative return for altcoins when bitcoin daily return is negative or positive using ∏(1 + returns𝑖) formula, printing the results
-btc_returns = data2_returns['Bitcoin']
-alt_returns_when_btc_positive = (1 + data2_returns[btc_returns > 0]).prod() - 1
-alt_returns_when_btc_negative = (1 + data2_returns[btc_returns < 0]).prod() - 1
 
-print('\nCumulative return for altcoins when bitcoin daily return is positive:')
-print(alt_returns_when_btc_positive)
-print('\nCumulative return for altcoins when bitcoin daily return is negative:')
-print(alt_returns_when_btc_negative)
+def moving_average_grid(price_series):
+    """Evaluate simple in-sample 2022 moving-average rules.
 
-# %% Cell 11
-## Question 2, part a
+    The original course exercise applies a 0.95 multiplier to daily returns in
+    the transaction-adjusted wealth calculation. It is retained here as a
+    course assumption rather than presented as a realistic transaction-cost model.
+    """
+    price_series = price_series.dropna()
+    returns = price_series.pct_change(fill_method=None)
+    evaluation = price_series.loc["2022-01-01":"2022-12-31"]
 
-# %% Cell 12
-# Define the tickers
-tickers = ['BTC-USD', 'ETH-USD', 'XRP-USD']
+    rows = []
+    for long_window in range(10, 101, 5):
+        for short_window in range(5, long_window, 5):
+            short_ma = price_series.rolling(short_window).mean()
+            long_ma = price_series.rolling(long_window).mean()
 
-# download the data for the last year
-data3 = pd.DataFrame()
+            wealth = 1.0
+            adjusted_wealth = 1.0
+            buy_days = 0
+            sell_days = 0
 
-for t in tickers:
-    data3[t] = yf.download(t, start="2022-01-01", end="2022-12-31")['Close']
+            for date in evaluation.index:
+                if pd.isna(short_ma.loc[date]) or pd.isna(long_ma.loc[date]):
+                    continue
+                r = returns.loc[date]
+                if pd.isna(r):
+                    continue
 
-# renaming the data frame columns, showing the data frame
-data3 = data3.rename(columns={ 'BTC-USD': 'Bitcoin', 'ETH-USD': 'Ethereum', 'XRP-USD': 'Ripple' })
+                if short_ma.loc[date] > long_ma.loc[date]:
+                    buy_days += 1
+                    wealth *= 1.0 + r
+                    adjusted_wealth *= 1.0 + 0.95 * r
+                elif long_ma.loc[date] > short_ma.loc[date]:
+                    sell_days += 1
 
-data3
+            rows.append(
+                {
+                    "long_window": long_window,
+                    "short_window": short_window,
+                    "buy_days": buy_days,
+                    "sell_days": sell_days,
+                    "wealth_ratio": wealth,
+                    "course_adjusted_wealth_ratio": adjusted_wealth,
+                }
+            )
 
-# %% Cell 13
-# calculate daily returns
-log_returns3 = np.log(data3 / data3.shift(1))
-log_returns3
+    return pd.DataFrame(rows)
 
-# calculate annual returns
-annual_returns3 = log_returns3.mean() * 363
-annual_returns3
 
-# define the weights
-weights = np.arange(0, 1.05, 0.05)
+def main():
+    # ------------------------------------------------------------------
+    # Part 1: market-data comparison
+    # ------------------------------------------------------------------
+    tickers_2022 = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD"]
+    names_2022 = {
+        "BTC-USD": "Bitcoin",
+        "ETH-USD": "Ethereum",
+        "BNB-USD": "Binance Coin",
+        "XRP-USD": "Ripple",
+        "ADA-USD": "Cardano",
+    }
 
-# calculate portfolio return and volatility for each possible composition
-portfolio_returns = []
-portfolio_volatilities = []
-portfolio_weights = []
+    prices_2022 = download_prices(tickers_2022, "2022-01-01", "2023-01-01")
+    prices_2022 = prices_2022.rename(columns=names_2022)
 
-for i in range(len(weights)):
-    for j in range(len(weights)):
-        for k in range(len(weights)):
-            if weights[i] + weights[j] + weights[k] == 1:
-                new_weights = [weights[i], weights[j], weights[k]]
-                portfolio_return = np.sum(annual_returns3* new_weights)
-                portfolio_variance = np.dot(np.array(new_weights).T, np.dot(log_returns3.cov() * 363, new_weights))
-                portfolio_volatility = np.sqrt(portfolio_variance)
-                portfolio_weights.append(new_weights)
-                portfolio_returns.append(portfolio_return)
-                portfolio_volatilities.append(portfolio_volatility)
+    normalized = normalize_to_100(prices_2022)
+    normalized.plot(figsize=(12, 6), title="Cryptocurrency Price Indices (Start = 100)")
+    plt.ylabel("Index")
+    plt.tight_layout()
+    plt.savefig(FIGURE_DIR / "crypto_price_indices.png", dpi=150)
+    plt.close()
 
-# Print the results
-# Consider that first element in every matrix relates to Bitcoin, second relates to Ethereum and third one relates to Ripple
-for i in range(len(portfolio_returns)):
-    print('Weights:', np.round(portfolio_weights[i], 4))
-    print('Portfolio Return:', round(portfolio_returns[i], 4))
-    print('Portfolio Volatility:', round(portfolio_volatilities[i], 4))
-    print()
+    simple_returns = prices_2022.pct_change(fill_method=None)
+    cumulative_returns = (1.0 + simple_returns).prod() - 1.0
+    cumulative_returns.to_csv(OUTPUT_DIR / "cumulative_returns_2022.csv", header=["return"])
 
-# %% Cell 14
-## Question 2, part b
+    # ------------------------------------------------------------------
+    # Part 2: conditional return comparison
+    # ------------------------------------------------------------------
+    tickers_conditional = [
+        "BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD",
+        "DOGE-USD", "SOL-USD", "MATIC-USD", "TRX-USD", "LTC-USD",
+    ]
+    conditional_prices = download_prices(
+        tickers_conditional, "2022-12-26", "2023-06-26"
+    )
+    conditional_returns = conditional_prices.pct_change(fill_method=None)
+    btc_returns = conditional_returns["BTC-USD"]
 
-# %% Cell 15
-# plot all possible sharpe ratios that could be obtained by chosen portfolios
-risk_free_rate = 0
+    positive_days = (conditional_returns > 0).sum()
+    negative_days = (conditional_returns < 0).sum()
+    pd.DataFrame(
+        {"positive_days": positive_days, "negative_days": negative_days}
+    ).to_csv(OUTPUT_DIR / "positive_negative_days.csv")
 
-# method 1 for ploting
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=list(portfolio_volatilities), 
-                         y=list(portfolio_returns), 
-                      #- Add color scale for sharpe ratio   
-                      marker=dict(color=(np.array(portfolio_returns)-risk_free_rate)/(np.array(portfolio_volatilities)), 
-                                  showscale=True, 
-                                  size=7,
-                                  line=dict(width=1),
-                                  colorscale="RdBu",
-                                  colorbar=dict(title="Sharpe<br>Ratio")
-                                 ), 
-                      mode='markers'))
-# Add title/labels
-fig.update_layout(template='plotly_white',
-                  xaxis=dict(title='Annualised Risk (Volatility)'),
-                  yaxis=dict(title='Annualised Return'),
-                  title='Sample of chosen Portfolios',
-                  coloraxis_colorbar=dict(title="Sharpe Ratio"))
+    when_btc_positive = (1.0 + conditional_returns.loc[btc_returns > 0]).prod() - 1.0
+    when_btc_negative = (1.0 + conditional_returns.loc[btc_returns < 0]).prod() - 1.0
+    pd.DataFrame(
+        {
+            "btc_positive_days": when_btc_positive,
+            "btc_negative_days": when_btc_negative,
+        }
+    ).to_csv(OUTPUT_DIR / "conditional_cumulative_returns.csv")
 
-# %% Cell 16
-# method 2 for ploting
-x2 = portfolio_volatilities
-y2 = portfolio_returns
+    # ------------------------------------------------------------------
+    # Part 3: portfolio risk-return grid
+    # ------------------------------------------------------------------
+    portfolio_prices = download_prices(
+        ["BTC-USD", "ETH-USD", "XRP-USD"], "2022-01-01", "2023-01-01"
+    )
+    portfolio_prices = portfolio_prices.rename(
+        columns={"BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "XRP-USD": "Ripple"}
+    )
 
-plt.scatter(x2, y2)
-plt.show()
+    portfolios = portfolio_grid(portfolio_prices)
+    portfolios.to_csv(OUTPUT_DIR / "portfolio_grid.csv", index=False)
 
-# %% Cell 17
-# creating csv file containing portfolios of three cryptos, returns and variances for each combination of weights
-portfolios_data_frame = pd.DataFrame(0,index=range(len(portfolio_weights)), columns=['Bitcoin-weight','Ethereum-weight','Ripple-weight','return','volatility','sharpe ratio' ])
+    fig = go.Figure(
+        data=go.Scatter(
+            x=portfolios["annualized_volatility"],
+            y=portfolios["annualized_return"],
+            mode="markers",
+            marker={
+                "color": portfolios["sharpe_ratio"],
+                "showscale": True,
+                "size": 7,
+                "colorbar": {"title": "Sharpe Ratio"},
+            },
+        )
+    )
+    fig.update_layout(
+        template="plotly_white",
+        xaxis_title="Annualized Volatility",
+        yaxis_title="Annualized Return",
+        title="Portfolio Risk-Return Grid",
+    )
+    fig.write_html(OUTPUT_DIR / "portfolio_risk_return.html")
 
-for i in range(len(portfolio_weights)):
-    portfolios_data_frame['Bitcoin-weight'].loc[i]=portfolio_weights[i][0]
-    portfolios_data_frame['Ethereum-weight'].loc[i]=portfolio_weights[i][1]
-    portfolios_data_frame['Ripple-weight'].loc[i]=portfolio_weights[i][2]
-    portfolios_data_frame['return'].loc[i]=portfolio_returns[i]
-    portfolios_data_frame['volatility'].loc[i]=portfolio_volatilities[i]
-    portfolios_data_frame['sharpe ratio'].loc[i]=portfolio_returns[i]/portfolio_volatilities[i]
+    best_portfolio = portfolios.loc[portfolios["sharpe_ratio"].idxmax()]
+    print("\nHighest-Sharpe portfolio in the five-percentage-point grid:")
+    print(best_portfolio)
 
-portfolios_data_frame.to_csv('portfolios.csv')
+    # ------------------------------------------------------------------
+    # Part 4: moving-average course exercise
+    # ------------------------------------------------------------------
+    btc = download_prices(
+        "BTC-USD", "2021-09-01", "2023-01-01", adjusted=True
+    )["BTC-USD"]
 
-# %% Cell 18
-# calculating the best weights which give us the highest possible sharpe ratio, printing the results
+    ma_results = moving_average_grid(btc)
+    ma_results.to_csv(OUTPUT_DIR / "moving_average_grid.csv", index=False)
 
-sharpe_ratio = (np.array(portfolio_returns) - risk_free_rate)/(np.array(portfolio_volatilities))
-sharpe_ratio
+    best_raw = ma_results.loc[ma_results["wealth_ratio"].idxmax()]
+    best_adjusted = ma_results.loc[
+        ma_results["course_adjusted_wealth_ratio"].idxmax()
+    ]
 
-M = max(sharpe_ratio)
-for i in range(0, np.array(sharpe_ratio.shape)[0]) :
-     if sharpe_ratio[i] == M :
-          print('Optimal weights to gain highest sharpe ratio are:', np.round(portfolio_weights[i], 4))
+    print("\nBest in-sample moving-average rule by raw wealth ratio:")
+    print(best_raw)
+    print("\nBest in-sample moving-average rule under the course adjustment:")
+    print(best_adjusted)
 
-# %% Cell 19
-# Question 3
 
-# %% Cell 20
-# download the data for the last year
-data4= pd.DataFrame()
-data4= yf.download('BTC-USD', start="2021-09-01", end="2023-01-01")['Adj Close']
-
-# %% Cell 21
-data=[]
-for i in range(10,101,5):
-    for j in range(5,i,5):
-
-        #i is number of days of long moving average and j is number of days of short moving average
-        sell= 0
-        buy= 0
-        wealth= 1
-        wealth_transactioned= 1
-        first_day= np.where(data4==data4.loc['2022-01-01'])[0][0]
-        last_day= np.where(data4==data4.loc['2022-12-31'])[0][0]
-        for t in range(first_day , last_day):
-
-            #if short moving average is bigger than long moving average we have buy signal
-            if sum(data4[t-j:t])/j > sum(data4[t-i:t])/i:
-                buy+= 1
-                wealth*= data4[t] / data4[t-1]
-                wealth_transactioned*= 1 + 0.95*(data4[t] / data4[t-1] -1)
-            
-            #if long moving average is bigger than short moving average we have sell signal
-            elif sum(data4[t-i:t])/i > sum(data4[t-j:t])/j:
-                sell+= 1
-        data.append([i,j,buy,sell,wealth,wealth_transactioned])    
-        
-
-# %% Cell 22
-#finding maximum possible wealth
-max_wealth=0
-for i in range(np.shape(data)[0]):
-    if data[i][4] > max_wealth:
-        max_wealth= data[i][4]
-
-#finding index of trading strategy which makes maximum possible wealth
-for i in range(np.shape(data)[0]):
-    if data[i][4] == max_wealth:
-        max_index=i
-
-# %% Cell 23
-#finding maximum possible transactioned wealth
-max_transactioned_wealth=0
-for i in range(np.shape(data)[0]):
-    if data[i][5] > max_transactioned_wealth:
-        max_transactioned_wealth= data[i][5]
-
-#finding index of trading strategy which makes maximum possible transactioned wealth
-for i in range(np.shape(data)[0]):
-    if data[i][5] == max_transactioned_wealth:
-        max_transactioned_index=i
-
-# %% Cell 24
-# printing the results for part a
-print("best trading strategy without transaction:")
-print("long moving average days:  ",data[max_index][0])
-print("short moving average days:  ",data[max_index][1])
-print("buy signals:  ",data[max_index][2])
-print("sell signals:  ",data[max_index][3])
-print("ratio of wealth change:  ",data[max_index][4])
-
-# %% Cell 25
-# printing the results for part b
-print("best trading strategy with transaction:")
-print("long moving average days:  ",data[max_transactioned_index][0])
-print("short moving average days:  ",data[max_transactioned_index][1])
-print("buy signals:  ",data[max_transactioned_index][2])
-print("sell signals:  ",data[max_transactioned_index][3])
-print("ratio of wealth change:  ",data[max_transactioned_index][5])
-
+if __name__ == "__main__":
+    main()
