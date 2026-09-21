@@ -1,69 +1,80 @@
-# Cryptocurrency Data Analysis with Python
+# Python Market Data and Portfolio Analytics
 
-This repository contains a Python project for cryptocurrency data analysis. The project was originally prepared for a Financial Economics I course.
+## Overview
 
-The analysis uses Yahoo Finance data and covers three main parts:
+This repository contains a Financial Economics course project implemented in **Python**. It uses cryptocurrency market data as the application, but the main portfolio value is the analytical workflow: downloading market data, transforming prices into returns, comparing assets, evaluating portfolio risk-return combinations, computing Sharpe ratios, and testing a simple moving-average rule.
 
-- price comparison and cumulative returns for major cryptocurrencies in 2022
-- portfolio return, volatility, and Sharpe ratio analysis for Bitcoin, Ethereum, and Ripple
-- a moving-average crossover trading strategy for Bitcoin
+## Skills Demonstrated
+
+- Python for financial and market-data analysis
+- `pandas` / `NumPy` data manipulation
+- Automated market-data retrieval with `yfinance`
+- Return and cumulative-return calculations
+- Portfolio return and volatility estimation
+- Sharpe-ratio comparison across portfolio weights
+- Data visualization with Matplotlib and Plotly
+- Rule-based time-series strategy analysis
+- Reproducible script and notebook workflows
+
+## Project Components
+
+### 1. Market-data comparison
+
+The first section compares 2022 prices and cumulative returns for Bitcoin, Ethereum, Binance Coin, Ripple, and Cardano. Price indices are normalized to a common starting value to make cross-asset movements easier to compare.
+
+### 2. Portfolio risk-return analysis
+
+The second section evaluates portfolios of Bitcoin, Ethereum, and Ripple over a grid of weights. For each portfolio, the script calculates annualized return, volatility, and a Sharpe ratio under the course assumption of a zero risk-free rate.
+
+### 3. Moving-average exercise
+
+The final section evaluates simple Bitcoin moving-average rules over the 2022 sample. This is an **in-sample course exercise**, not evidence of a production trading strategy or out-of-sample profitability.
 
 ## Repository Structure
 
 ```text
-crypto-analysis-python-project/
+crypto-python/
 ├── README.md
 ├── requirements.txt
 ├── notebooks/
-│   └── crypto_analysis_400203402.ipynb
+│   └── crypto_analysis.ipynb
 ├── src/
 │   └── crypto_analysis.py
 ├── figures/
-│   ├── notebook_cell5_output0.png
-│   ├── notebook_cell16_output0.png
-│   └── portfolio_risk_return_plotly_clean.png
 └── report/
     ├── crypto_analysis_report_en.pdf
     ├── crypto_analysis_report_en.tex
     └── original_report_fa.pdf
 ```
 
-## Project Summary
-
-### Part 1: Cryptocurrency price trends
-
-The first part downloads 2022 price data for Bitcoin, Ethereum, Binance Coin, Ripple, and Cardano. The prices are normalized and plotted to compare their behavior over the year. The cumulative returns are also calculated.
-
-### Part 2: Portfolio analysis
-
-The second part builds portfolios using Bitcoin, Ethereum, and Ripple. Portfolio weights are chosen in 5 percent steps. For each portfolio, return, volatility, and Sharpe ratio are calculated. The risk-return plots show the possible portfolio combinations.
-
-### Part 3: Bitcoin moving-average strategy
-
-The third part tests moving-average crossover strategies for Bitcoin. Moving averages from 5 to 100 days are compared. The best strategy in the report is based on the 85-day and 80-day moving averages.
-
 ## How to Run
 
-Install the required packages:
+Install the dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Then open the notebook:
-
-```bash
-jupyter notebook notebooks/crypto_analysis_400203402.ipynb
-```
-
-You can also run the script version:
+Run the cleaned script:
 
 ```bash
 python src/crypto_analysis.py
 ```
 
+Or open the original notebook:
+
+```bash
+jupyter notebook notebooks/crypto_analysis.ipynb
+```
+
+The analysis retrieves historical prices from Yahoo Finance through `yfinance`, so an internet connection is required. Provider-side revisions can cause small differences in rerun outputs.
+
 ## Notes
 
-The project downloads data from Yahoo Finance through `yfinance`, so some results may change slightly if the data provider updates historical prices.
+The cleaned Python script keeps the analytical structure of the course project while making the data download, normalization, portfolio grid, and output handling more robust. The English PDF report is provided under `report/`, together with the original Persian report for reference.
 
-The English PDF report was generated from the LaTeX file in the `report/` folder. The original Persian report is also included for reference.
+## Author
+
+**Omid Karami**
+
+Financial Economics coursework and Python portfolio project.
